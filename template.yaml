@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Globals:
+  Function:
+    Timeout: 180 # 3 minutos lembre-se que Function.Timeout deve ser igual ou menor que Queue.VisibilityTimeout
+    MemorySize: 10240
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: puppeteer-lambda-docker-bucket
+
+  PuppeteerLambdaDockerSQSQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: puppeteer-lambda-docker-queue
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PuppeteerLambdaDockerDLQ.Arn
+        maxReceiveCount: 3
+      DelaySeconds: 10
+      VisibilityTimeout: 180
+
+  PuppeteerLambdaDockerDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: puppeteer-lambda-docker-dlq
+
+  PuppeteerLambdaDockerLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: puppeteer-lambda-docker
+      PackageType: Image
+      Events:
+        PuppeteerLambdaDockerSQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt PuppeteerLambdaDockerSQSQueue.Arn
+      Environment:
+          Variables:
+            S3_BUCKET: !Ref S3Bucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref S3Bucket
+    Metadata:
+      DockerTag: latest
+      DockerContext: .
+      Dockerfile: Dockerfile
